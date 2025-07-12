@@ -10,18 +10,14 @@ use network_direct::{
     ReadLimits, RegisterFlags, RemoteToken, RequestContext, WriteFlags,
 };
 
-use crate::{
-    pixel::Pixel,
-    sge::Sge,
-    r#type::{Overlap, buffer_size},
-};
+use crate::{pixel::Pixel, sge::Sge, r#type::Overlap};
 
 pub struct Connection<const N: usize> {
     pub index: u8,
     title: String,
     //mem_region2: MemoryRegion<Pin<Box<[Pixel; N]>>, Pixel>,
     //buffer: Pin<Box<GenericArray<Pixel, N>>>,
-    mem_region: MemoryRegion<[Pixel; N], Pixel, N>,
+    mem_region: MemoryRegion<[Pixel; N], Pixel>,
     pub mem_window: Pin<Box<MemoryWindow>>,
     pub connector: Connector,
     pub queue_pair: Pin<Box<QueuePair>>,
@@ -118,13 +114,7 @@ impl<const N: usize> Connection<N> {
         // let buffer = *self.mem_region.buffer_mut();
         // let p = &mut buffer[..];
         let remote_token = self.mem_region.get_remote_token();
-        let buffer = unsafe {
-            self.mem_region
-                .buffer
-                .as_mut()
-                .get_unchecked_mut()
-                .as_mut_slice()
-        };
+        let buffer = self.mem_region.buffer.as_mut();
         // let buffer = self.mem_region.buffer.as_mut_slice();
 
         //let mut buffer = self.mem_region.buffer.as_mut();

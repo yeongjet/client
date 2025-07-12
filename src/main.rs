@@ -13,7 +13,7 @@ use std::{fs, net::SocketAddr};
 
 use client::Client;
 
-use crate::{r#type::buffer_size, window::Window};
+use crate::window::Window;
 
 fn setup_logging() {
     let log_file = "logs/client.log";
@@ -41,11 +41,8 @@ fn main() {
     let local_addr = get_local_addr(remote_addr);
     info!("local address: {}", local_addr);
     let adapter = Framework::new().open_adapter(local_addr).unwrap();
-    let window_list = vec![Window::new(
-        "test Window".to_string(),
-        1920*1090
-    )];
-   //  Client::new(adapter);
+    let window_list = vec![Window::new("test Window".to_string(), 1920 * 1090)];
+    //  Client::new(adapter);
     let mut client = Client::new(adapter);
-   client.run(window_list, local_addr, remote_addr);
+    client.run(window_list, local_addr, remote_addr);
 }

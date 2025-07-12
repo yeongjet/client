@@ -15,7 +15,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub struct Client
+pub struct Client<const N: usize>
 // <N>
 // where
 //     N: ArrayLength,
@@ -31,10 +31,10 @@ pub struct Client
     // send_cq_notify_ov_ptr: *const Overlap,
     // recv_cq_notify_ov: Pin<Box<Overlap>>,
     // recv_cq_notify_ov_ptr: *const Overlap,
-    conn_list: Vec<Pin<Box<Connection>>>,
+    conn_list: Vec<Pin<Box<Connection<N>>>>,
 }
 
-impl Client
+impl<const N: usize> Client<N>
 // where
 //     N: ArrayLength,
 {
