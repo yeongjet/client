@@ -13,6 +13,8 @@ use std::{fs, net::SocketAddr};
 
 use client::Client;
 
+use crate::{r#type::buffer_size, window::Window};
+
 fn setup_logging() {
     let log_file = "logs/client.log";
     let _ = fs::remove_file(log_file);
@@ -33,18 +35,17 @@ fn setup_logging() {
 }
 
 fn main() {
-    //setup_logging();
+    setup_logging();
     let args = Args::parse_args();
     let remote_addr = SocketAddr::new(args.ip, args.port);
     let local_addr = get_local_addr(remote_addr);
     info!("local address: {}", local_addr);
     let adapter = Framework::new().open_adapter(local_addr).unwrap();
-    // let window_list = vec![Window::<buffer_size::Window1>::new(
-    //     "test Window".to_string(),
-    // )];
-            let adapter_file = adapter.create_adapter_file().unwrap();
-    println!("Adapter file created: {:?}", adapter_file);
-    Client::new(adapter);
-    // let mut client = Client::new(adapter);
-   // client.run(window_list, local_addr, remote_addr);
+    let window_list = vec![Window::new(
+        "test Window".to_string(),
+        1920*1090
+    )];
+   //  Client::new(adapter);
+    let mut client = Client::new(adapter);
+   client.run(window_list, local_addr, remote_addr);
 }

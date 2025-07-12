@@ -2,7 +2,6 @@ use network_direct::{
     MemoryRegion,
     sys::{ND2_SGE, UINT32, ULONG},
 };
-use generic_array::{GenericArray, ArrayLength};
 
 use crate::pixel::Pixel;
 

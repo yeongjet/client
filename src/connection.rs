@@ -5,9 +5,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use generic_array::{ArrayLength, GenericArray, arr};
 use network_direct::{
-    Adapter, BindFlags, Buffer, CompletionQueue, Connector, MemoryRegion, MemoryWindow, QueuePair,
+    Adapter, BindFlags, CompletionQueue, Connector, MemoryRegion, MemoryWindow, QueuePair,
     ReadLimits, RegisterFlags, RemoteToken, RequestContext, WriteFlags,
 };
 
@@ -17,14 +16,12 @@ use crate::{
     r#type::{Overlap, buffer_size},
 };
 
-pub struct Connection<N>
-where
-    N: ArrayLength,
-{
+pub struct Connection<const N: usize> {
     pub index: u8,
     title: String,
+    //mem_region2: MemoryRegion<Pin<Box<[Pixel; N]>>, Pixel>,
     //buffer: Pin<Box<GenericArray<Pixel, N>>>,
-    mem_region: MemoryRegion<Pixel, N>,
+    mem_region: MemoryRegion<[Pixel; N], Pixel, N>,
     pub mem_window: Pin<Box<MemoryWindow>>,
     pub connector: Connector,
     pub queue_pair: Pin<Box<QueuePair>>,
@@ -38,7 +35,7 @@ where
     remote_token: Option<RemoteToken>,
 }
 
-impl<N: ArrayLength> Connection<N> {
+impl<const N: usize> Connection<N> {
     pub fn new(
         index: u8,
         title: String,
@@ -56,19 +53,21 @@ impl<N: ArrayLength> Connection<N> {
                 .create_queue_pair(recv_cq, send_cq, 1, 1, 1, 1, 0)
                 .unwrap(),
         );
-        let buffer = Box::pin(GenericArray::<Pixel, N>::default());
+        let buffer = [Pixel::default(); N];
         // let buffer = Box::pin(arr![Pixel::default(); N]);
         let mem_region = adapter.create_memory_region(&adapter_file, buffer).unwrap();
         mem_region
             .register(RegisterFlags::ALLOW_LOCAL_WRITE, &mut Overlap::default())
             .unwrap();
-        queue_pair.bind(
-            RequestContext(index as u128),
-            &mem_region,
-            &*mem_window.as_ref(),
-            &mem_region.buffer,
-            BindFlags::ALLOW_WRITE | BindFlags::ALLOW_READ,
-        ).unwrap();
+        queue_pair
+            .bind(
+                RequestContext(index as u128),
+                &mem_region,
+                &*mem_window.as_ref(),
+                &mem_region.buffer,
+                BindFlags::ALLOW_WRITE | BindFlags::ALLOW_READ,
+            )
+            .unwrap();
         let accept_ov = Box::pin(Overlap::default());
         let accept_ov_ptr = &*accept_ov as *const Overlap;
         let disconnect_ov = Box::pin(Overlap::default());

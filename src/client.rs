@@ -2,13 +2,11 @@ use crate::{
     cli,
     connection::Connection,
     pixel::Pixel,
-    r#type::{Overlap, buffer_size},
+    r#type::{Overlap, },
     window::{self, Window},
 };
-use generic_array::{arr, ArrayLength, GenericArray};
 use log::info;
 use network_direct::{Adapter, CompletionQueue, MemoryRegion, NotifyType, RegisterFlags};
-use typenum::U3;
 use std::{
     fs::File,
     mem,
@@ -23,7 +21,6 @@ pub struct Client
 //     N: ArrayLength,
 {
     // mem_region: MemoryRegion<Pixel, buffer_size::Total>,
-     mem_region: MemoryRegion<Pixel, buffer_size::Total>,
     adapter: Adapter,
     adapter_file: File,
     send_cq: CompletionQueue,
@@ -34,7 +31,7 @@ pub struct Client
     // send_cq_notify_ov_ptr: *const Overlap,
     // recv_cq_notify_ov: Pin<Box<Overlap>>,
     // recv_cq_notify_ov_ptr: *const Overlap,
-    //conn_list: Vec<Pin<Box<Connection<N>>>>,
+    conn_list: Vec<Pin<Box<Connection>>>,
 }
 
 impl Client
@@ -43,12 +40,16 @@ impl Client
 {
     pub fn new(adapter: Adapter) -> Self {
         let adapter_file = adapter.create_adapter_file().unwrap();
-        let buffer = Box::pin(GenericArray::<Pixel, buffer_size::Total>::default());
+        //  let buffer2 = arr![Pixel::default(); buffer_size::Total];
+        //        // let buffer2 = vec![Pixel::default(); 123];
+
+        // let buffer = Box::pin(buffer2);
+        // println!("{:p}", buffer);
         // let buffer = Box::pin(arr![Pixel::default(); N]);
-        let mem_region = adapter.create_memory_region(&adapter_file, buffer).unwrap();
-        mem_region
-            .register(RegisterFlags::ALLOW_LOCAL_WRITE, &mut Overlap::default())
-            .unwrap();
+        // let mem_region = adapter.create_memory_region(&adapter_file, buffer).unwrap();
+        // mem_region
+        //     .register(RegisterFlags::ALLOW_LOCAL_WRITE, &mut Overlap::default())
+        //     .unwrap();
         let adapter_info = adapter.query().unwrap();
         let queue_depth = std::cmp::min(
             adapter_info.MaxCompletionQueueDepth,
@@ -77,69 +78,64 @@ impl Client
             adapter_file,
             send_cq,
             recv_cq,
-            mem_region,
+           //  mem_region,
             // conn_recv_ov,
             // conn_recv_ov_ptr,
             // send_cq_notify_ov,
             // send_cq_notify_ov_ptr,
             // recv_cq_notify_ov,
             // recv_cq_notify_ov_ptr,
-            //conn_list: vec![],
+            conn_list: vec![],
         }
     }
 
-    // pub fn run(
-    //     &mut self,
-    //     window_list: Vec<Window<N>>,
-    //     local_addr: SocketAddr,
-    //     remote_addr: SocketAddr,
-    // ) 
-    // where
-    //     N: ArrayLength,
-    // {
-
-    //     for (index, window) in window_list.iter().enumerate() {
-
-    //         let conn = Connection::new(
-    //             index as u8,
-    //             window.title.clone(),
-    //             &self.adapter,
-    //             &self.adapter_file,
-    //             &self.send_cq,
-    //             &self.recv_cq,
-    //             local_addr,
-    //         );
-    //         self.conn_list.push(Box::pin(conn));
-    //     }    
-    //     info!("[client] connecting:{}", remote_addr);
-    //     // let iocp = unsafe {
-    //     //     CreateIoCompletionPort(HANDLE(self.adapter_file.as_raw_handle()), None, 0, 0).unwrap()
-    //     // };
-    //     let conn = self.conn_list.first().unwrap();
-    //     conn.connect(remote_addr);
-    //     // let overlap = ptr as *const Overlap;
-    //     // let is_ok = result.is_ok();
-    //     // if !is_ok {
-    //     //     info!("[server] failed: {:?}", result);
-    //     // }
-    //     // let status = if is_ok { "success" } else { "failure" };
-    //     // if overlap == self.send_cq_notify_ov_ptr {
-    //     //     info!("[server] send_cq_notify:{}", status);
-    //     //     if is_ok {
-    //     //         self.handle_send_cq_notify_success();
-    //     //     }
-    //     // } else if overlap == self.recv_cq_notify_ov_ptr {
-    //     //     info!("[server] recv_cq_notify:{}", status);
-    //     //     if is_ok {
-    //     //         self.handle_receive_cq_notify_success();
-    //     //     }
-    //     // } else if overlap == self.conn_recv_ov_ptr {
-    //     //     info!("[server] connect_receive:{}", status);
-    //     //     if is_ok {
-    //     //         self.handle_connect_receive_success(connector)
-    //     //     }
-    //     // }
-    // }
+    pub fn run(
+        &mut self,
+        window_list: Vec<Window>,
+        local_addr: SocketAddr,
+        remote_addr: SocketAddr,
+    ) {
+        for (index, window) in window_list.iter().enumerate() {
+            let conn = Connection::new(
+                index as u8,
+                window.title.clone(),
+                &self.adapter,
+                &self.adapter_file,
+                &self.send_cq,
+                &self.recv_cq,
+                local_addr,
+            );
+            self.conn_list.push(Box::pin(conn));
+        }
+        info!("[client] connecting:{}", remote_addr);
+        // let iocp = unsafe {
+        //     CreateIoCompletionPort(HANDLE(self.adapter_file.as_raw_handle()), None, 0, 0).unwrap()
+        // };
+        let conn = self.conn_list.first().unwrap();
+        conn.connect(remote_addr);
+        // let overlap = ptr as *const Overlap;
+        // let is_ok = result.is_ok();
+        // if !is_ok {
+        //     info!("[server] failed: {:?}", result);
+        // }
+        // let status = if is_ok { "success" } else { "failure" };
+        // if overlap == self.send_cq_notify_ov_ptr {
+        //     info!("[server] send_cq_notify:{}", status);
+        //     if is_ok {
+        //         self.handle_send_cq_notify_success();
+        //     }
+        // } else if overlap == self.recv_cq_notify_ov_ptr {
+        //     info!("[server] recv_cq_notify:{}", status);
+        //     if is_ok {
+        //         self.handle_receive_cq_notify_success();
+        //     }
+        // } else if overlap == self.conn_recv_ov_ptr {
+        //     info!("[server] connect_receive:{}", status);
+        //     if is_ok {
+        //         self.handle_connect_receive_success(connector)
+        //     }
+        // }
+    }
 
     // fn handle_connect_receive_success(&mut self, connector: Connector) {
     //     self.conn_list.push(Box::pin(Connection::new(
