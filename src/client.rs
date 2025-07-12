@@ -91,8 +91,6 @@ impl<'a> Client<'a> {
             .enumerate()
             .fold(0, |buffer_start, (index, window)| {
                 let buffer_size = N::to_usize();
-                let size = window.buffer_size * mem::size_of::<Pixel>() as u32;
-                //let end = start.wrapping_add(size as usize);
                 let buffer_end = buffer_start + buffer_size;
                 let conn = Connection::new(
                     index as u8,
@@ -103,8 +101,7 @@ impl<'a> Client<'a> {
                     &self.send_cq,
                     &self.recv_cq,
                     local_addr,
-                    buffer_start,
-                    buffer_end
+                    (buffer_start, buffer_end),
                 );
                 self.conn_list.push(Box::pin(conn));
                 buffer_end
