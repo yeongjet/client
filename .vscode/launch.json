@@ -7,11 +7,10 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug Server",
+            "name": "Debug Client",
             "cargo": {
                 "args": [
-                    "build",
-                    "--package=server"
+                    "build"
                 ],
                 // "filter": {
                 //     "name": "a",

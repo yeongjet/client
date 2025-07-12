@@ -1,22 +1,22 @@
-use std::{
-    pin::Pin,
-    ptr::{self, addr_of},
-    sync::{Arc, RwLock},
-};
+use std::{fs::File, net::SocketAddr, pin::Pin, sync::{Arc, RwLock}};
 
-use log::info;
+use generic_array::{ArrayLength, GenericArray};
 use network_direct::{
-    Adapter, CompletionQueue, Connector, MemoryRegion, ND2Overlapped, QueuePair, ReadLimits,
-    RequestContext, SendFlags,
-    Win32::{Foundation::CloseHandle, System::Threading::CreateEventA},
-    core::PCSTR,
+    Adapter, BindFlags, Buffer, CompletionQueue, Connector, MemoryRegion, MemoryWindow, QueuePair,
+    ReadLimits, RemoteToken, RequestContext, WriteFlags,
 };
 
-use crate::{overlap::Overlap, sge::Sge};
+use crate::{
+    pixel::Pixel,
+    sge::Sge,
+    r#type::{Overlap, buffer_size},
+};
 
-pub struct Connection {
-    pub id: usize,
-    mem_region: Arc<RwLock<MemoryRegion>>,
+pub struct Connection<'a> {
+    pub index: u8,
+    title: String,
+    mem_region: &'a mut MemoryRegion<Pixel, buffer_size::Total>,
+    pub mem_window: Pin<Box<MemoryWindow>>,
     pub connector: Connector,
     pub queue_pair: Pin<Box<QueuePair>>,
     accept_ov: Pin<Box<Overlap>>,
@@ -25,37 +25,45 @@ pub struct Connection {
     disconnect_ov_ptr: *const Overlap,
     notify_disconnect_ov: Pin<Box<Overlap>>,
     notify_disconnect_ov_ptr: *const Overlap,
-    ack_times: u8,
+    buffer: &'a mut [Pixel],
+    remote_token: Option<RemoteToken>,
 }
 
-impl Connection {
+impl<'a> Connection<'a> {
     pub fn new(
-        mem_region: Arc<RwLock<MemoryRegion>>,
+        index: u8,
+        title: String,
+        mem_region: &'a mut MemoryRegion<Pixel, buffer_size::Total>,
         adapter: &Adapter,
+        adapter_file: &File,
         send_cq: &CompletionQueue,
         recv_cq: &CompletionQueue,
-        connector: Connector,
+        local_addr: SocketAddr,
+        buffer_start: usize,
+        buffer_end: usize,
     ) -> Self {
+        let connector = adapter.create_connector(adapter_file).unwrap();
+        connector.bind(local_addr).unwrap();
+        let mem_window = Box::pin(adapter.create_memory_window().unwrap());
         let queue_pair = Box::pin(
             adapter
                 .create_queue_pair(recv_cq, send_cq, 1, 1, 1, 1, 0)
                 .unwrap(),
         );
-        let mut accept_ov = Box::pin(Overlap::default());
+
+        let accept_ov = Box::pin(Overlap::default());
         let accept_ov_ptr = &*accept_ov as *const Overlap;
-        let mut disconnect_ov = Box::pin(Overlap::default());
+        let disconnect_ov = Box::pin(Overlap::default());
         let disconnect_ov_ptr = &*disconnect_ov as *const Overlap;
-        let mut notify_disconnect_ov = Box::pin(Overlap::default());
+        let notify_disconnect_ov: Pin<Box<network_direct::Win32::System::IO::OVERLAPPED>> =
+            Box::pin(Overlap::default());
         let notify_disconnect_ov_ptr = &*notify_disconnect_ov as *const Overlap;
-        accept_ov.hEvent = unsafe { CreateEventA(None, false, false, PCSTR(ptr::null())).unwrap() };
-        disconnect_ov.hEvent =
-            unsafe { CreateEventA(None, false, false, PCSTR(ptr::null())).unwrap() };
-        notify_disconnect_ov.hEvent =
-            unsafe { CreateEventA(None, false, false, PCSTR(ptr::null())).unwrap() };
-        let ack_times = 0;
+        let buffer = mem_region.buffer[buffer_start..buffer_end].as_mut();
         Self {
-            id: 0,
+            index,
+            title,
             mem_region,
+            mem_window,
             connector,
             queue_pair,
             accept_ov,
@@ -64,30 +72,56 @@ impl Connection {
             disconnect_ov_ptr,
             notify_disconnect_ov,
             notify_disconnect_ov_ptr,
-            ack_times,
+            buffer,
+            remote_token: None,
         }
     }
 
-    pub fn init(&mut self) {
-        let sge_list = [Sge::new(&mut self.mem_region.write().unwrap())];
-        self.id = self as *const Connection as usize;
-        self.queue_pair
-            .receive(RequestContext(self.id as u128), &sge_list)
-            .unwrap();
-        info!(
-            "[conn {:#x}] init connector_ptr: {:p}",
-            self.id, &self.connector,
+    pub fn connect(&self, remote_addr: SocketAddr) {
+        // let sge_list = [Sge::new(&mut self.mem_region)];
+        // let sge = ND2_SGE {
+        //     Buffer: buffer.as_mut_ptr() as *mut std::ffi::c_void,
+        //     BufferLength: buffer.len() as u32,
+        //     MemoryRegionToken: mem_region.get_remote_token().0,
+        // };
+        let buffer = mem_region.buffer[buffer_start..buffer_end].as_ref();
+        queue_pair.bind(
+            RequestContext(index as u128),
+            mem_region,
+            &*mem_window.as_ref(),
+            buffer,
+            BindFlags::ALLOW_WRITE | BindFlags::ALLOW_READ,
         );
         self.connector
-            .accept(
+            .connect(
                 &self.queue_pair,
+                remote_addr,
                 ReadLimits::default(),
                 None,
-                &mut *self.accept_ov,
+                &mut Overlap::default(),
             )
             .unwrap();
         self.connector
-            .notify_disconnect(&mut *self.notify_disconnect_ov)
+            .complete_connect(&mut Overlap::default())
             .unwrap();
+    }
+
+    pub fn write(&mut self) {
+        // let buffer = *self.mem_region.buffer_mut();
+        // let p = &mut buffer[..];
+
+        let sgl = [Sge::new(&mut self.buffer, self.mem_region.get_remote_token().0)];
+        // let sgl =         [ND2_SGE {
+        //     Buffer: buffer.as_mut_ptr() as *mut std::ffi::c_void,
+        //     BufferLength: buffer.len() as u32,
+        //     MemoryRegionToken: mem_region.get_remote_token().0,
+        // }];
+        self.queue_pair.write(
+            RequestContext(self.index as u128),
+            &sgl,
+            0,
+            self.mem_window.remote_token(),
+            WriteFlags::SILENT_SUCCESS,
+        );
     }
 }

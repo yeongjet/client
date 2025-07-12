@@ -1,5 +1,4 @@
 use std::net::IpAddr;
-
 use clap::Parser;
 
 #[derive(Parser, Debug)]

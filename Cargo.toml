@@ -7,5 +7,7 @@ edition = "2024"
 chrono = "0.4.41"
 clap = "4.5.40"
 fern = "0.7.1"
+generic-array = "1.2.0"
 log = "0.4.27"
-network-direct = { version = "0.1.0", path = "../../network-direct/network-direct" }
+network-direct = { version = "0.1.0", path = "../network-direct/network-direct" }
+typenum = "1.18.0"
