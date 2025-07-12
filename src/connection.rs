@@ -5,10 +5,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use generic_array::{ArrayLength, GenericArray};
+use generic_array::{ArrayLength, GenericArray, arr};
 use network_direct::{
     Adapter, BindFlags, Buffer, CompletionQueue, Connector, MemoryRegion, MemoryWindow, QueuePair,
-    ReadLimits, RemoteToken, RequestContext, WriteFlags,
+    ReadLimits, RegisterFlags, RemoteToken, RequestContext, WriteFlags,
 };
 
 use crate::{
@@ -17,10 +17,14 @@ use crate::{
     r#type::{Overlap, buffer_size},
 };
 
-pub struct Connection<'a> {
+pub struct Connection<N>
+where
+    N: ArrayLength,
+{
     pub index: u8,
     title: String,
-    mem_region: &'a mut MemoryRegion<Pixel, buffer_size::Total>,
+    //buffer: Pin<Box<GenericArray<Pixel, N>>>,
+    mem_region: MemoryRegion<Pixel, N>,
     pub mem_window: Pin<Box<MemoryWindow>>,
     pub connector: Connector,
     pub queue_pair: Pin<Box<QueuePair>>,
@@ -30,21 +34,19 @@ pub struct Connection<'a> {
     disconnect_ov_ptr: *const Overlap,
     notify_disconnect_ov: Pin<Box<Overlap>>,
     notify_disconnect_ov_ptr: *const Overlap,
-    buffer_range: (usize, usize),
+
     remote_token: Option<RemoteToken>,
 }
 
-impl<'a> Connection<'a> {
+impl<N: ArrayLength> Connection<N> {
     pub fn new(
         index: u8,
         title: String,
-        mem_region: &'a mut MemoryRegion<Pixel, buffer_size::Total>,
         adapter: &Adapter,
         adapter_file: &File,
         send_cq: &CompletionQueue,
         recv_cq: &CompletionQueue,
         local_addr: SocketAddr,
-        buffer_range: (usize, usize),
     ) -> Self {
         let connector = adapter.create_connector(adapter_file).unwrap();
         connector.bind(local_addr).unwrap();
@@ -54,14 +56,19 @@ impl<'a> Connection<'a> {
                 .create_queue_pair(recv_cq, send_cq, 1, 1, 1, 1, 0)
                 .unwrap(),
         );
-        let buffer = mem_region.buffer[buffer_range.0..buffer_range.1].as_ref();
+        let buffer = Box::pin(GenericArray::<Pixel, N>::default());
+        // let buffer = Box::pin(arr![Pixel::default(); N]);
+        let mem_region = adapter.create_memory_region(&adapter_file, buffer).unwrap();
+        mem_region
+            .register(RegisterFlags::ALLOW_LOCAL_WRITE, &mut Overlap::default())
+            .unwrap();
         queue_pair.bind(
             RequestContext(index as u128),
-            mem_region,
+            &mem_region,
             &*mem_window.as_ref(),
-            buffer,
+            &mem_region.buffer,
             BindFlags::ALLOW_WRITE | BindFlags::ALLOW_READ,
-        );
+        ).unwrap();
         let accept_ov = Box::pin(Overlap::default());
         let accept_ov_ptr = &*accept_ov as *const Overlap;
         let disconnect_ov = Box::pin(Overlap::default());
@@ -82,7 +89,6 @@ impl<'a> Connection<'a> {
             disconnect_ov_ptr,
             notify_disconnect_ov,
             notify_disconnect_ov_ptr,
-            buffer_range,
             remote_token: None,
         }
     }
@@ -112,10 +118,18 @@ impl<'a> Connection<'a> {
     pub fn write(&mut self) {
         // let buffer = *self.mem_region.buffer_mut();
         // let p = &mut buffer[..];
-        let (start, end) = self.buffer_range;
         let remote_token = self.mem_region.get_remote_token();
-        let buffer = self.mem_region.buffer[start..end].as_mut();
-        let sgl = [Sge::new(buffer, remote_token)];
+        let buffer = unsafe {
+            self.mem_region
+                .buffer
+                .as_mut()
+                .get_unchecked_mut()
+                .as_mut_slice()
+        };
+        // let buffer = self.mem_region.buffer.as_mut_slice();
+
+        //let mut buffer = self.mem_region.buffer.as_mut();
+        let sgl = [Sge::new(&mut buffer.as_mut(), remote_token)];
         self.queue_pair.write(
             RequestContext(self.index as u128),
             &sgl,
