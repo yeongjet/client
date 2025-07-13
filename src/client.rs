@@ -1,8 +1,8 @@
 use crate::{
     cli,
-    connection::Connection,
+    connection::{Connection, ConnectionTrait},
     pixel::Pixel,
-    r#type::{Overlap, },
+    r#type::Overlap,
     window::{self, Window},
 };
 use log::info;
@@ -15,26 +15,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub struct Client<const N: usize>
-// <N>
-// where
-//     N: ArrayLength,
+pub struct Client
 {
-    // mem_region: MemoryRegion<Pixel, buffer_size::Total>,
     adapter: Adapter,
     adapter_file: File,
     send_cq: CompletionQueue,
     recv_cq: CompletionQueue,
-    // conn_recv_ov: Pin<Box<Overlap>>,
-    // conn_recv_ov_ptr: *const Overlap,
-    // send_cq_notify_ov: Pin<Box<Overlap>>,
-    // send_cq_notify_ov_ptr: *const Overlap,
-    // recv_cq_notify_ov: Pin<Box<Overlap>>,
-    // recv_cq_notify_ov_ptr: *const Overlap,
-    conn_list: Vec<Pin<Box<Connection<N>>>>,
+    conn_list: Vec<Pin<Box<dyn ConnectionTrait>>>,
 }
 
-impl<const N: usize> Client<N>
+impl Client
 // where
 //     N: ArrayLength,
 {
@@ -89,14 +79,17 @@ impl<const N: usize> Client<N>
         }
     }
 
-    pub fn run(
+    pub fn run<const N: usize>(
         &mut self,
-        window_list: Vec<Window>,
+        window_list: Vec<Window<N>>,
         local_addr: SocketAddr,
         remote_addr: SocketAddr,
     ) {
         for (index, window) in window_list.iter().enumerate() {
-            let conn = Connection::new(
+            // 这里需要根据不同的 N 构造不同类型的 Connection
+            // 例如：let conn = Connection::<4>::new(...);
+            // 这里只做演示，实际 N 的值需要你根据业务逻辑传入
+            let conn = Connection::<N>::new(
                 index as u8,
                 window.title.clone(),
                 &self.adapter,

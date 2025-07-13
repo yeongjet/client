@@ -1,10 +1,9 @@
-pub struct Window {
+pub struct Window<const N: usize> {
     pub title: String,
-    pub buffer_size: u32,
 }
 
-impl Window {
-    pub fn new(title: String, buffer_size: u32) -> Self {
-        Self { title, buffer_size }
+impl<const N: usize> Window<N> {
+    pub fn new(title: String) -> Self {
+        Self { title }
     }
 }

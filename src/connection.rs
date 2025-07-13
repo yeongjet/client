@@ -12,6 +12,10 @@ use network_direct::{
 
 use crate::{pixel::Pixel, sge::Sge, r#type::Overlap};
 
+pub trait ConnectionTrait {
+    fn connect(&self, remote_addr: SocketAddr);
+}
+
 pub struct Connection<const N: usize> {
     pub index: u8,
     title: String,
@@ -29,6 +33,12 @@ pub struct Connection<const N: usize> {
     notify_disconnect_ov_ptr: *const Overlap,
 
     remote_token: Option<RemoteToken>,
+}
+
+impl<const N: usize> ConnectionTrait for Connection<N> {
+    fn connect(&self, remote_addr: SocketAddr) {
+        self.connect(remote_addr);
+    }
 }
 
 impl<const N: usize> Connection<N> {
@@ -49,18 +59,19 @@ impl<const N: usize> Connection<N> {
                 .create_queue_pair(recv_cq, send_cq, 1, 1, 1, 1, 0)
                 .unwrap(),
         );
-        let buffer = [Pixel::default(); N];
+        let buffer = Box::pin([Pixel::default(); N]);
         // let buffer = Box::pin(arr![Pixel::default(); N]);
         let mem_region = adapter.create_memory_region(&adapter_file, buffer).unwrap();
         mem_region
             .register(RegisterFlags::ALLOW_LOCAL_WRITE, &mut Overlap::default())
             .unwrap();
+
         queue_pair
             .bind(
                 RequestContext(index as u128),
                 &mem_region,
                 &*mem_window.as_ref(),
-                &mem_region.buffer,
+                &*mem_region.buffer,
                 BindFlags::ALLOW_WRITE | BindFlags::ALLOW_READ,
             )
             .unwrap();
@@ -114,17 +125,19 @@ impl<const N: usize> Connection<N> {
         // let buffer = *self.mem_region.buffer_mut();
         // let p = &mut buffer[..];
         let remote_token = self.mem_region.get_remote_token();
-        let buffer = self.mem_region.buffer.as_mut();
+        let buffer = (*self.mem_region.buffer).as_mut();
         // let buffer = self.mem_region.buffer.as_mut_slice();
 
         //let mut buffer = self.mem_region.buffer.as_mut();
-        let sgl = [Sge::new(&mut buffer.as_mut(), remote_token)];
-        self.queue_pair.write(
-            RequestContext(self.index as u128),
-            &sgl,
-            0,
-            self.mem_window.remote_token(),
-            WriteFlags::SILENT_SUCCESS,
-        );
+        let sgl = [Sge::new(buffer, remote_token)];
+        self.queue_pair
+            .write(
+                RequestContext(self.index as u128),
+                &sgl,
+                0,
+                self.mem_window.remote_token(),
+                WriteFlags::SILENT_SUCCESS,
+            )
+            .unwrap();
     }
 }

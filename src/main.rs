@@ -40,9 +40,13 @@ fn main() {
     let remote_addr = SocketAddr::new(args.ip, args.port);
     let local_addr = get_local_addr(remote_addr);
     info!("local address: {}", local_addr);
-    let adapter = Framework::new().open_adapter(local_addr).unwrap();
-    let window_list = vec![Window::new("test Window".to_string(), 1920 * 1090)];
+    // TODO: 提示当服务器没有启动导致local_addr不在可用ip列表时
+    let adapter = Framework::new().open_adapter(local_addr);
+    if adapter.is_none() {
+        panic!("服务器可能未开启");
+    }
+    let window_list = vec![Window::<{ 1920 * 1090 }>::new("test Window".to_string())];
     //  Client::new(adapter);
-    let mut client = Client::new(adapter);
+    let mut client = Client::new(adapter.unwrap());
     client.run(window_list, local_addr, remote_addr);
 }
