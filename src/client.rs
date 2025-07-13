@@ -86,9 +86,6 @@ impl Client
         remote_addr: SocketAddr,
     ) {
         for (index, window) in window_list.iter().enumerate() {
-            // 这里需要根据不同的 N 构造不同类型的 Connection
-            // 例如：let conn = Connection::<4>::new(...);
-            // 这里只做演示，实际 N 的值需要你根据业务逻辑传入
             let conn = Connection::<N>::new(
                 index as u8,
                 window.title.clone(),

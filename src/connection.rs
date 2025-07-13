@@ -21,7 +21,7 @@ pub struct Connection<const N: usize> {
     title: String,
     //mem_region2: MemoryRegion<Pin<Box<[Pixel; N]>>, Pixel>,
     //buffer: Pin<Box<GenericArray<Pixel, N>>>,
-    mem_region: MemoryRegion<[Pixel; N], Pixel>,
+    mem_region: MemoryRegion<Vec<Pixel>, Pixel>,
     pub mem_window: Pin<Box<MemoryWindow>>,
     pub connector: Connector,
     pub queue_pair: Pin<Box<QueuePair>>,
@@ -59,19 +59,20 @@ impl<const N: usize> Connection<N> {
                 .create_queue_pair(recv_cq, send_cq, 1, 1, 1, 1, 0)
                 .unwrap(),
         );
-        let buffer = Box::pin([Pixel::default(); N]);
+        // let buffer = Box::pin([Pixel::default(); N]);
         // let buffer = Box::pin(arr![Pixel::default(); N]);
+        let buffer = vec![Pixel::default(); N];
         let mem_region = adapter.create_memory_region(&adapter_file, buffer).unwrap();
         mem_region
             .register(RegisterFlags::ALLOW_LOCAL_WRITE, &mut Overlap::default())
             .unwrap();
-
+         let p = &mem_region.buffer;
         queue_pair
             .bind(
                 RequestContext(index as u128),
                 &mem_region,
                 &*mem_window.as_ref(),
-                &*mem_region.buffer,
+                &mem_region.buffer,
                 BindFlags::ALLOW_WRITE | BindFlags::ALLOW_READ,
             )
             .unwrap();
